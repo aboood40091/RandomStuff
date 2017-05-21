@@ -6,10 +6,10 @@ doesn't really need one repo. Currently, not that much, but it could change..
 And it's not Wii-specific any more. :p
 
 
-Wii U GTX Extractor
+GTX Extractor (C version)
 -------------------
 
-Extracts textures from the GX2 Texture ('Gfx2' / .gtx file extension) format used in Wii U games, and saves them as BMP. 
+Extracts textures from the GX2 Texture ('Gfx2' / .gtx file extension) format used in Wii U games, and saves them as DDS. 
   
 Supported formats:  
 * RGBA8_UNORM / RGBA8_SRGB
@@ -31,7 +31,7 @@ TODO:
   
 Credits:  
 * Treeki - Original developer.
-* AboodXD - Reviver, Improved swizzling.
+* AboodXD - Reviver, Added new features, Improved swizzling.
 * Exzap, AddrLib - Helping with swizzling.
 * libtxc_dxtn
   
