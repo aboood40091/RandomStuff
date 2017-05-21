@@ -11,9 +11,10 @@
  *
  * How to build:
  * gcc -m64 -o gtx_extract gtx_extract.c
+ * (You need an x64 version of gcc!)
  *
- * This tool currently supports RGBA8 (format 0x1A) and DXT5 (format 0x33)
- * textures.
+ * This tool currently supports RGBA8 (format 0x1a and 0x41a) and
+ * BC3/DXT5 (format 0x33 and 0x433) textures.
  *
  * Why so complex?
  * Wii U textures appear to be packed using a complex 'texture swizzling'
@@ -21,7 +22,7 @@
  *
  * TODO:
  * Add more formats (I'm lazy... :P)
- * Export as DDS.
+ * Export as DDS. (to add more formats, obviously)
  *
  * Feel free to throw a pull request at me if you improve it!
  */

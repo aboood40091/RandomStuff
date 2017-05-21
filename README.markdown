@@ -15,6 +15,10 @@ Supported formats:
 * RGBA8_UNORM / RGBA8_SRGB
 * BC3_UNORM / BC3_SRGB (DXT5)
   
+TODO:  
+* Add more formats (I'm lazy... :P)
+* Export as DDS. (to add more formats, obviously)
+  
 Credits:  
 * Treeki - Original developer.
 * AboodXD - Reviver, Improved swizzling.
