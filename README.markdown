@@ -33,7 +33,6 @@ Credits:
 * Treeki - Original developer.
 * AboodXD - Reviver, Added new features, Improved swizzling.
 * Exzap, AddrLib - Helping with swizzling.
-* libtxc_dxtn
   
 More details on compilation and usage in the comments inside the file.  
 
