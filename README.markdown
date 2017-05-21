@@ -13,11 +13,21 @@ Extracts textures from the GX2 Texture ('Gfx2' / .gtx file extension) format use
   
 Supported formats:  
 * RGBA8_UNORM / RGBA8_SRGB
+* RGB10A2_UNORM
+* RGB565_UNORM
+* RGB5A1_UNORM
+* RGBA4_UNORM
+* R8_UNORM
+* RG8_UNORM
+* RG4_UNORM
+* BC1_UNORM / BC1_SRGB (DXT1)
+* BC2_UNORM / BC2_SRGB (DXT3)
 * BC3_UNORM / BC3_SRGB (DXT5)
+* BC4_UNORM / BC4_SNORM (ATI1)
+* BC5_UNORM / BC5_SNORM (ATI2)
   
 TODO:  
-* Add more formats (I'm lazy... :P)
-* Export as DDS. (to add more formats, obviously)
+* Make a x86 version (Would probably force me to rewrite the program?)
   
 Credits:  
 * Treeki - Original developer.
