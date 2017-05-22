@@ -28,11 +28,13 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <setjmp.h>
+#include <time.h>
 
 #define max(x, y) (((x) > (y)) ? (x) : (y))
 #define min(x, y) (((x) < (y)) ? (x) : (y))
 
 
+static int formats[] = {0x1a, 0x41a, 0x19, 0x8, 0xa, 0xb, 0x1, 0x7, 0x2, 0x31, 0x431, 0x32, 0x432, 0x33, 0x433, 0x34, 0x234, 0x35, 0x235}; // Supported formats
 static int BCn_formats[10] = {0x31, 0x431, 0x32, 0x432, 0x33, 0x433, 0x34, 0x234, 0x35, 0x235};
 
 
@@ -78,6 +80,7 @@ uint32_t surfaceGetBitsPerPixel(uint32_t surfaceFormat)
 
 /* Start of GTX Extractor section */
 typedef struct _GFDData {
+    uint32_t numImages;
 	uint32_t dim;
 	uint32_t width;
 	uint32_t height;
@@ -94,6 +97,7 @@ typedef struct _GFDData {
     uint32_t swizzle;
     uint32_t alignment;
     uint32_t pitch;
+    uint32_t bpp;
 	uint32_t realSize;
 	uint32_t dataSize;
 	uint8_t *data;
@@ -306,16 +310,13 @@ void writeHeader(FILE *f, uint32_t num_mipmaps, uint32_t w, uint32_t h, uint32_t
 int readGTX(GFDData *gfd, FILE *f) {
 	GFDHeader header;
 
-	// This is kinda bad. Don't really care right now >.>
-	gfd->width = 0;
-	gfd->height = 0;
-	gfd->data = NULL;
-
 	if (fread(&header, 1, sizeof(header), f) != sizeof(header))
 		return -1;
 
 	if (memcmp(header.magic, "Gfx2", 4) != 0)
 		return -2;
+
+    gfd->numImages = 0;
 
 	while (!feof(f)) {
 		GFDBlockHeader section;
@@ -350,9 +351,10 @@ int readGTX(GFDData *gfd, FILE *f) {
             gfd->swizzle = swap32(info.swizzle);
             gfd->alignment = swap32(info.alignment);
             gfd->pitch = swap32(info.pitch);
+            gfd->bpp = surfaceGetBitsPerPixel(gfd->format);
 
-		} else if (swap32(section.type_) == 0xC && gfd->data == NULL) {
-		    uint32_t bpp = surfaceGetBitsPerPixel(gfd->format);
+		} else if (swap32(section.type_) == 0xC) {
+		    uint32_t bpp = gfd->bpp;
             bpp /= 8;
 		    if (isvalueinarray(gfd->format, BCn_formats, 10))
                 gfd->realSize = ((gfd->width + 3) >> 2) * ((gfd->height + 3) >> 2) * bpp;
@@ -367,6 +369,8 @@ int readGTX(GFDData *gfd, FILE *f) {
 
 			if (fread(gfd->data, 1, gfd->dataSize, f) != gfd->dataSize)
 				return -301;
+
+            gfd->numImages += 1;
 
 		} else {
 			fseek(f, swap32(section.dataSize), SEEK_CUR);
@@ -736,7 +740,7 @@ void writeFile(FILE *f, GFDData *gfd, uint8_t *output) {
 
 	writeHeader(f, 1, gfd->width, gfd->height, format, isvalueinarray(gfd->format, BCn_formats, 10));
 
-	uint32_t bpp = surfaceGetBitsPerPixel(gfd->format);
+	uint32_t bpp = gfd->bpp;
 	bpp /= 8;
 
 	if (isvalueinarray(gfd->format, BCn_formats, 10)) {
@@ -772,7 +776,7 @@ void swizzle_8(GFDData *gfd, FILE *f) {
 
 	for (y = 0; y < height; y++) {
 		for (x = 0; x < width; x++) {
-			uint32_t bpp = surfaceGetBitsPerPixel(gfd->format);
+			uint32_t bpp = gfd->bpp;
             uint32_t pipeSwizzle = (gfd->swizzle >> 8) & 1;
             uint32_t bankSwizzle = (gfd->swizzle >> 9) & 3;
 
@@ -814,7 +818,7 @@ void swizzle_16(GFDData *gfd, FILE *f) {
 
 	for (y = 0; y < height; y++) {
 		for (x = 0; x < width; x++) {
-			uint32_t bpp = surfaceGetBitsPerPixel(gfd->format);
+			uint32_t bpp = gfd->bpp;
             uint32_t pipeSwizzle = (gfd->swizzle >> 8) & 1;
             uint32_t bankSwizzle = (gfd->swizzle >> 9) & 3;
 
@@ -856,7 +860,7 @@ void swizzle_32(GFDData *gfd, FILE *f) {
 
 	for (y = 0; y < height; y++) {
 		for (x = 0; x < width; x++) {
-			uint32_t bpp = surfaceGetBitsPerPixel(gfd->format);
+			uint32_t bpp = gfd->bpp;
             uint32_t pipeSwizzle = (gfd->swizzle >> 8) & 1;
             uint32_t bankSwizzle = (gfd->swizzle >> 9) & 3;
 
@@ -898,7 +902,7 @@ void swizzle_64(GFDData *gfd, FILE *f) {
 
 	for (y = 0; y < height; y++) {
 		for (x = 0; x < width; x++) {
-			uint32_t bpp = surfaceGetBitsPerPixel(gfd->format);
+			uint32_t bpp = gfd->bpp;
             uint32_t pipeSwizzle = (gfd->swizzle >> 8) & 1;
             uint32_t bankSwizzle = (gfd->swizzle >> 9) & 3;
 
@@ -941,7 +945,7 @@ void swizzle_128(GFDData *gfd, FILE *f) {
 
 	for (y = 0; y < height; y++) {
 		for (x = 0; x < width; x++) {
-			uint32_t bpp = surfaceGetBitsPerPixel(gfd->format);
+			uint32_t bpp = gfd->bpp;
             uint32_t pipeSwizzle = (gfd->swizzle >> 8) & 1;
             uint32_t bankSwizzle = (gfd->swizzle >> 9) & 3;
 
@@ -963,51 +967,165 @@ void swizzle_128(GFDData *gfd, FILE *f) {
 	free(output);
 }
 
+char *remove_three(const char *filename) {
+    size_t len = strlen(filename);
+    char *newfilename = malloc(len-2);
+    if (!newfilename) /* handle error */;
+    memcpy(newfilename, filename, len-3);
+    newfilename[len - 3] = 0;
+    return newfilename;
+}
+
 int main(int argc, char **argv) {
 	GFDData data;
 	FILE *f;
 	int result;
 
-	if (argc != 3) {
-		fprintf(stderr, "Usage: %s [input.gtx] [output.dds]\n", argv[0]);
+	printf("GTX Extractor - C ver.\n");
+    printf("(C) 2014 Treeki, 2017 AboodXD\n");
+
+	if (argc != 2) {
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Usage: %s [input.gtx]\n", argv[0]);
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Supported formats:\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_TCS_R8_G8_B8_A8_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_TCS_R8_G8_B8_A8_SRGB\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_TCS_R10_G10_B10_A2_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_TCS_R5_G6_B5_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_TC_R5_G5_B5_A1_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_TC_R4_G4_B4_A4_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_TC_R8_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_TC_R8_G8_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_TC_R4_G4_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC1_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC1_SRGB\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC2_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC2_SRGB\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC3_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC3_SRGB\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC4_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC4_SNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC5_UNORM\n");
+        fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC5_SNORM\n");
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Exiting in 5 seconds...\n");
+        unsigned int retTime = time(0) + 5;
+        while (time(0) < retTime);
 		return EXIT_FAILURE;
 	}
 
 	if (!(f = fopen(argv[1], "rb"))) {
-		fprintf(stderr, "Cannot open %s for reading\n", argv[1]);
+		fprintf(stderr, "\n");
+        fprintf(stderr, "Cannot open %s for reading\n", argv[1]);
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Exiting in 5 seconds...\n");
+        unsigned int retTime = time(0) + 5;
+        while (time(0) < retTime);
 		return EXIT_FAILURE;
 	}
 
 	if ((result = readGTX(&data, f)) != 1) {
-		fprintf(stderr, "Error %d while parsing GTX file %s\n", result, argv[1]);
+		fprintf(stderr, "\n");
+        fprintf(stderr, "Error %d while parsing GTX file %s\n", result, argv[1]);
 		fclose(f);
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Exiting in 5 seconds...\n");
+        unsigned int retTime = time(0) + 5;
+        while (time(0) < retTime);
 		return EXIT_FAILURE;
 	}
 	fclose(f);
 
-	if (!(f = fopen(argv[2], "wb"))) {
-		fprintf(stderr, "Cannot open %s for writing\n", argv[2]);
+	char *str = remove_three(argv[1]);
+    char c = 'd';
+    char c1 = 'd';
+    char c2 = 's';
+
+    size_t len = strlen(str);
+    char *str2 = malloc(len + 3 + 1 );
+    strcpy(str2, str);
+    str2[len] = c;
+    str2[len + 1] = c1;
+    str2[len + 2] = c2;
+    str2[len + 3] = '\0';
+
+    if (!(f = fopen(str2, "wb"))) {
+		fprintf(stderr, "\n");
+        fprintf(stderr, "Cannot open %s for writing\n", str2);
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Exiting in 5 seconds...\n");
+        unsigned int retTime = time(0) + 5;
+        while (time(0) < retTime);
 		return EXIT_FAILURE;
 	}
 
-	printf("Width: %d - Height: %d - Format: 0x%x\n", data.width, data.height, data.format);
-	printf("Size: %d (%x)\n", data.imageSize, data.imageSize);
-	printf("Real size: %d (%x)\n", data.realSize, data.realSize);
+	free(str2);
 
-	uint32_t bpp = surfaceGetBitsPerPixel(data.format);
+	if (data.numImages > 1) {
+        fprintf(stderr, "\n");
+        fprintf(stderr, "This program doesn't support converting GTX files with multiple images\n");
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Exiting in 5 seconds...\n");
+        unsigned int retTime = time(0) + 5;
+        while (time(0) < retTime);
+		return EXIT_FAILURE;
+	}
 
-	if (bpp == 8)
-            swizzle_8(&data, f);
-    else if (bpp == 16)
-            swizzle_16(&data, f);
-    else if (bpp == 32)
-            swizzle_32(&data, f);
-    else if (bpp == 64)
-            swizzle_64(&data, f);
-    else if (bpp == 128)
-            swizzle_128(&data, f);
-    else
-        printf("Unsupported format: 0x%x\n", data.format);
+	else if (data.numImages == 0) {
+        fprintf(stderr, "\n");
+        fprintf(stderr, "No images were found in this GTX file\n");
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Exiting in 5 seconds...\n");
+        unsigned int retTime = time(0) + 5;
+        while (time(0) < retTime);
+		return EXIT_FAILURE;
+	}
+
+	printf("\n");
+    printf("// ----- GX2Surface Info ----- \n");
+    printf("  dim             = %d\n", data.dim);
+    printf("  width           = %d\n", data.width);
+    printf("  height          = %d\n", data.height);
+    printf("  depth           = %d\n", data.depth);
+    printf("  numMips         = %d\n", data.numMips);
+    printf("  format          = 0x%x\n", data.format);
+    printf("  aa              = %d\n", data.aa);
+    printf("  use             = %d\n", data.use);
+    printf("  imageSize       = %d\n", data.imageSize);
+    printf("  mipSize         = %d\n", data.mipSize);
+    printf("  tileMode        = %d\n", data.tileMode);
+    printf("  swizzle         = %d, 0x%x\n", data.swizzle, data.swizzle);
+    printf("  alignment       = %d\n", data.alignment);
+    printf("  pitch           = %d\n", data.pitch);
+    printf("\n");
+    printf("  bits per pixel  = %d\n", data.bpp);
+    printf("  bytes per pixel = %d\n", data.bpp / 8);
+    printf("  realSize        = %d\n", data.realSize);
+
+	uint32_t bpp = data.bpp;
+
+	if (isvalueinarray(data.format, formats, 19)) {
+        if (bpp == 8)
+                swizzle_8(&data, f);
+        else if (bpp == 16)
+                swizzle_16(&data, f);
+        else if (bpp == 32)
+                swizzle_32(&data, f);
+        else if (bpp == 64)
+                swizzle_64(&data, f);
+        else if (bpp == 128)
+                swizzle_128(&data, f);
+	}
+
+	else {
+        fprintf(stderr, "Unsupported format: 0x%x\n", data.format);
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Exiting in 5 seconds...\n");
+        unsigned int retTime = time(0) + 5;
+        while (time(0) < retTime);
+		return EXIT_FAILURE;
+	}
 
 	fclose(f);
 
