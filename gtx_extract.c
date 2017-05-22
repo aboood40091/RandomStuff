@@ -1025,6 +1025,9 @@ int main(int argc, char **argv) {
 		return EXIT_FAILURE;
 	}
 
+	else
+        printf("\nConverting: %s\n", argv[1]);
+
 	if ((result = readGTX(&data, f)) != 1) {
 		fprintf(stderr, "\n");
         fprintf(stderr, "Error %d while parsing GTX file %s\n", result, argv[1]);
@@ -1036,6 +1039,26 @@ int main(int argc, char **argv) {
 		return EXIT_FAILURE;
 	}
 	fclose(f);
+
+	if (data.numImages > 1) {
+        fprintf(stderr, "\n");
+        fprintf(stderr, "This program doesn't support converting GTX files with multiple images\n"); // TODO
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Exiting in 5 seconds...\n");
+        unsigned int retTime = time(0) + 5;
+        while (time(0) < retTime);
+		return EXIT_FAILURE;
+	}
+
+	else if (data.numImages == 0) {
+        fprintf(stderr, "\n");
+        fprintf(stderr, "No images were found in this GTX file\n");
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Exiting in 5 seconds...\n");
+        unsigned int retTime = time(0) + 5;
+        while (time(0) < retTime);
+		return EXIT_FAILURE;
+	}
 
 	char *str = remove_three(argv[1]);
     char c = 'd';
@@ -1061,26 +1084,6 @@ int main(int argc, char **argv) {
 	}
 
 	free(str2);
-
-	if (data.numImages > 1) {
-        fprintf(stderr, "\n");
-        fprintf(stderr, "This program doesn't support converting GTX files with multiple images\n");
-        fprintf(stderr, "\n");
-        fprintf(stderr, "Exiting in 5 seconds...\n");
-        unsigned int retTime = time(0) + 5;
-        while (time(0) < retTime);
-		return EXIT_FAILURE;
-	}
-
-	else if (data.numImages == 0) {
-        fprintf(stderr, "\n");
-        fprintf(stderr, "No images were found in this GTX file\n");
-        fprintf(stderr, "\n");
-        fprintf(stderr, "Exiting in 5 seconds...\n");
-        unsigned int retTime = time(0) + 5;
-        while (time(0) < retTime);
-		return EXIT_FAILURE;
-	}
 
 	printf("\n");
     printf("// ----- GX2Surface Info ----- \n");
@@ -1128,6 +1131,8 @@ int main(int argc, char **argv) {
 	}
 
 	fclose(f);
+
+	printf("\nFinished converting: %s\n", argv[1]);
 
 	return EXIT_SUCCESS;
 }
