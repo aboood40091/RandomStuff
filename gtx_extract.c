@@ -739,6 +739,11 @@ void writeFile(FILE *f, GFDData *gfd, uint8_t *output) {
 	uint32_t bpp = surfaceGetBitsPerPixel(gfd->format);
 	bpp /= 8;
 
+	if (isvalueinarray(gfd->format, BCn_formats, 10)) {
+        bpp /= 2;
+	    bpp = max(1, bpp);
+	}
+
     for (y = 0; y < gfd->height; y++) {
         if ((y * gfd->width * bpp) >= gfd->realSize)
             break;
@@ -987,7 +992,7 @@ int main(int argc, char **argv) {
 
 	printf("Width: %d - Height: %d - Format: 0x%x\n", data.width, data.height, data.format);
 	printf("Size: %d (%x)\n", data.imageSize, data.imageSize);
-	printf("Real size: %d (%x)\n", data.dataSize, data.dataSize);
+	printf("Real size: %d (%x)\n", data.realSize, data.realSize);
 
 	uint32_t bpp = surfaceGetBitsPerPixel(data.format);
 
