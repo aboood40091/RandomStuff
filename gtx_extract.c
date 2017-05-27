@@ -22,6 +22,7 @@
  * Feel free to throw a pull request at me if you improve it!
  */
 
+/* General stuff and imports */
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -134,6 +135,31 @@ uint32_t swap32(uint32_t v) {
 	uint32_t d = (v & 0x000000FF) << 24;
 	return a|b|c|d;
 }
+
+/* Start of DDS writer section */
+
+/*
+ * Copyright © 2016-2017 AboodXD
+ *
+ * Supported formats:
+    -RGBA8
+    -RGB10A2
+    -RGB565
+    -RGB5A1
+    -RGBA4
+    -L8
+    -L8A8
+    -L4A4
+    -BC1_UNORM
+    -BC2_UNORM
+    -BC3_UNORM
+    -BC4_UNORM
+    -BC4_SNORM
+    -BC5_UNORM
+    -BC5_SNORM
+ *
+ * Feel free to include this in your own program if you want, just give credits. :)
+ */
 
 void writeHeader(FILE *f, uint32_t num_mipmaps, uint32_t w, uint32_t h, uint32_t format_, bool compressed) {
     uint32_t fmtbpp = 0;
@@ -383,9 +409,9 @@ int readGTX(GFDData *gfd, FILE *f) {
 /* Start of swizzling section */
 
 /* Credits:
-  -AddrLib: actual code
-  -Exzap: modifying code to apply to Wii U textures
-  -AboodXD: porting, code improvements and cleaning up
+    -AddrLib: actual code
+    -Exzap: modifying code to apply to Wii U textures
+    -AboodXD: porting, code improvements and cleaning up
 */
 
 static uint32_t m_banks = 4;
