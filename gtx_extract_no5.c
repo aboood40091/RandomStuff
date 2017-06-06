@@ -333,6 +333,31 @@ void writeHeader(FILE *f, uint32_t num_mipmaps, uint32_t w, uint32_t h, uint32_t
 	fwrite(thing2, 1, 0x10, f);
 }
 
+uint32_t cal_pitch(uint32_t width, uint32_t format_, uint32_t org_pitch) {
+    uint32_t bpp = surfaceGetBitsPerPixel(format_) >> 3;
+    double frac, whole;
+
+    if (isvalueinarray(format_, BCn_formats, 10)) {
+        double width2 = (double)width / 4.0;
+        frac = modf(width2, &whole);
+        width = (uint32_t)whole;
+        if (frac == 0.5)
+            width += 1;
+    }
+
+    uint32_t pitch = 1;
+    uint32_t z = 1;
+    while ((pitch < width) || (pitch < org_pitch)) {
+        pitch = bpp*z;
+        z += 1;
+    }
+
+    if (pitch < 1)
+        pitch = 1;
+
+    return pitch;
+}
+
 int readGTX(GFDData *gfd, FILE *f) {
 	GFDHeader header;
 
@@ -376,7 +401,7 @@ int readGTX(GFDData *gfd, FILE *f) {
             gfd->tileMode = swap32(info.tileMode);
             gfd->swizzle = swap32(info.swizzle);
             gfd->alignment = swap32(info.alignment);
-            gfd->pitch = swap32(info.pitch);
+            gfd->pitch = cal_pitch(gfd->width, gfd->format, swap32(info.pitch));
             gfd->bpp = surfaceGetBitsPerPixel(gfd->format);
 
 		} else if (swap32(section.type_) == 0xC) {
