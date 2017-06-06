@@ -29,7 +29,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <setjmp.h>
-#include <time.h>
 
 #define max(x, y) (((x) > (y)) ? (x) : (y))
 #define min(x, y) (((x) < (y)) ? (x) : (y))
@@ -1059,20 +1058,12 @@ int main(int argc, char **argv) {
         fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC4_SNORM\n");
         fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC5_UNORM\n");
         fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC5_SNORM\n");
-        fprintf(stderr, "\n");
-        fprintf(stderr, "Exiting in 5 seconds...\n");
-        unsigned int retTime = time(0) + 5;
-        while (time(0) < retTime);
 		return EXIT_FAILURE;
 	}
 
 	if (!(f = fopen(argv[1], "rb"))) {
 		fprintf(stderr, "\n");
         fprintf(stderr, "Cannot open %s for reading\n", argv[1]);
-        fprintf(stderr, "\n");
-        fprintf(stderr, "Exiting in 5 seconds...\n");
-        unsigned int retTime = time(0) + 5;
-        while (time(0) < retTime);
 		return EXIT_FAILURE;
 	}
 
@@ -1083,10 +1074,6 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "\n");
         fprintf(stderr, "Error %d while parsing GTX file %s\n", result, argv[1]);
 		fclose(f);
-        fprintf(stderr, "\n");
-        fprintf(stderr, "Exiting in 5 seconds...\n");
-        unsigned int retTime = time(0) + 5;
-        while (time(0) < retTime);
 		return EXIT_FAILURE;
 	}
 	fclose(f);
@@ -1094,20 +1081,12 @@ int main(int argc, char **argv) {
 	if (data.numImages > 1) {
         fprintf(stderr, "\n");
         fprintf(stderr, "This program doesn't support converting GTX files with multiple images\n"); // TODO
-        fprintf(stderr, "\n");
-        fprintf(stderr, "Exiting in 5 seconds...\n");
-        unsigned int retTime = time(0) + 5;
-        while (time(0) < retTime);
 		return EXIT_FAILURE;
 	}
 
 	else if (data.numImages == 0) {
         fprintf(stderr, "\n");
         fprintf(stderr, "No images were found in this GTX file\n");
-        fprintf(stderr, "\n");
-        fprintf(stderr, "Exiting in 5 seconds...\n");
-        unsigned int retTime = time(0) + 5;
-        while (time(0) < retTime);
 		return EXIT_FAILURE;
 	}
 
@@ -1127,10 +1106,6 @@ int main(int argc, char **argv) {
     if (!(f = fopen(str2, "wb"))) {
 		fprintf(stderr, "\n");
         fprintf(stderr, "Cannot open %s for writing\n", str2);
-        fprintf(stderr, "\n");
-        fprintf(stderr, "Exiting in 5 seconds...\n");
-        unsigned int retTime = time(0) + 5;
-        while (time(0) < retTime);
 		return EXIT_FAILURE;
 	}
 
@@ -1174,10 +1149,6 @@ int main(int argc, char **argv) {
 
 	else {
         fprintf(stderr, "Unsupported format: 0x%x\n", data.format);
-        fprintf(stderr, "\n");
-        fprintf(stderr, "Exiting in 5 seconds...\n");
-        unsigned int retTime = time(0) + 5;
-        while (time(0) < retTime);
 		return EXIT_FAILURE;
 	}
 
