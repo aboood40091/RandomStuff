@@ -333,11 +333,17 @@ void writeHeader(FILE *f, uint32_t num_mipmaps, uint32_t w, uint32_t h, uint32_t
 	fwrite(thing2, 1, 0x10, f);
 }
 
-uint32_t cal_pitch(uint32_t width, uint32_t format_, uint32_t org_pitch) {
-    uint32_t bpp = surfaceGetBitsPerPixel(format_) >> 3;
+uint32_t cal_pitch(uint32_t width, uint32_t format_) {
+    uint32_t bpp = surfaceGetBitsPerPixel(format_);
     double frac, whole;
 
     if (isvalueinarray(format_, BCn_formats, 10)) {
+        double bpp2 = (double)bpp / 4.0;
+        frac = modf(bpp2, &whole);
+        bpp = (uint32_t)whole;
+        if (frac == 0.5)
+            bpp += 1;
+
         double width2 = (double)width / 4.0;
         frac = modf(width2, &whole);
         width = (uint32_t)whole;
@@ -347,7 +353,7 @@ uint32_t cal_pitch(uint32_t width, uint32_t format_, uint32_t org_pitch) {
 
     uint32_t pitch = 1;
     uint32_t z = 1;
-    while ((pitch < width) || (pitch < org_pitch)) {
+    while (pitch < width) {
         pitch = bpp*z;
         z += 1;
     }
@@ -401,7 +407,7 @@ int readGTX(GFDData *gfd, FILE *f) {
             gfd->tileMode = swap32(info.tileMode);
             gfd->swizzle = swap32(info.swizzle);
             gfd->alignment = swap32(info.alignment);
-            gfd->pitch = cal_pitch(gfd->width, gfd->format, swap32(info.pitch));
+            gfd->pitch = cal_pitch(gfd->width, gfd->format);
             gfd->bpp = surfaceGetBitsPerPixel(gfd->format);
 
 		} else if (swap32(section.type_) == 0xC) {
@@ -636,7 +642,7 @@ uint32_t computeSurfaceBankSwappedWidth(uint32_t tileMode, uint32_t bpp, uint32_
     uint32_t rowSize = m_rowSize;
     uint32_t splitSize = m_splitSize;
     uint32_t groupSize = m_pipeInterleaveBytes;
-    uint32_t bytesPerSample = 8 * bpp;
+    uint32_t bytesPerSample = 8 * bpp & 0x1FFFFFFF;
 
     uint32_t samplesPerTile = splitSize / bytesPerSample;
     uint32_t slicesPerTile = max(1, numSamples / samplesPerTile);
@@ -695,6 +701,9 @@ uint64_t AddrLib_computeSurfaceAddrFromCoordMicroTiled(uint32_t x, uint32_t y, u
 }
 
 uint64_t AddrLib_computeSurfaceAddrFromCoordMacroTiled(uint32_t x, uint32_t y, uint32_t bpp, uint32_t pitch, uint32_t height, uint32_t tileMode, uint32_t pipeSwizzle, uint32_t bankSwizzle) {
+    uint64_t samplesPerSlice, numSampleSplits;
+    uint64_t numSamples, sampleSlice;
+
     uint32_t numPipes = m_pipes;
     uint32_t numBanks = m_banks;
     uint32_t numGroupBits = m_pipeInterleaveBytesBitcount;
@@ -703,9 +712,29 @@ uint64_t AddrLib_computeSurfaceAddrFromCoordMacroTiled(uint32_t x, uint32_t y, u
 
     uint32_t microTileThickness = computeSurfaceThickness(tileMode);
 
+    uint64_t microTileBits = bpp * (microTileThickness * MicroTilePixels);
+    uint64_t microTileBytes = (microTileBits + 7) / 8;
+
     uint64_t pixelIndex = computePixelIndexWithinMicroTile(x, y, bpp, tileMode);
 
-    uint64_t elemOffset = (bpp * pixelIndex) >> 3;
+    uint64_t pixelOffset = bpp * pixelIndex;
+
+    uint64_t elemOffset = pixelOffset;
+
+    uint64_t bytesPerSample = microTileBytes;
+    if (microTileBytes <= m_splitSize) {
+        numSamples = 1;
+        sampleSlice = 0;
+    }
+    else {
+        samplesPerSlice = m_splitSize / bytesPerSample;
+        numSampleSplits = max(1, 1 / samplesPerSlice);
+        numSamples = samplesPerSlice;
+        sampleSlice = elemOffset / (microTileBits / numSampleSplits);
+        elemOffset %= microTileBits / numSampleSplits;
+    }
+    elemOffset += 7;
+    elemOffset /= 8;
 
     uint64_t pipe = computePipeFromCoordWoRotation(x, y);
     uint64_t bank = computeBankFromCoordWoRotation(x, y);
@@ -713,9 +742,15 @@ uint64_t AddrLib_computeSurfaceAddrFromCoordMacroTiled(uint32_t x, uint32_t y, u
     uint64_t bankPipe = pipe + numPipes * bank;
     uint64_t rotation = computeSurfaceRotationFromTileMode(tileMode);
 
+    uint64_t swizzle = pipeSwizzle + numPipes * bankSwizzle;
+
+    bankPipe ^= numPipes * sampleSlice * ((numBanks >> 1) + 1) ^ swizzle;
     bankPipe %= numPipes * numBanks;
     pipe = bankPipe % numPipes;
     bank = bankPipe / numPipes;
+
+    uint64_t sliceBytes = (height * pitch * microTileThickness * bpp * numSamples + 7) / 8;
+    uint64_t sliceOffset = sliceBytes * (sampleSlice / microTileThickness);
 
     uint64_t macroTilePitch = 8 * m_banks;
     uint64_t macroTileHeight = 8 * m_pipes;
@@ -731,10 +766,10 @@ uint64_t AddrLib_computeSurfaceAddrFromCoordMacroTiled(uint32_t x, uint32_t y, u
     }
 
     uint64_t macroTilesPerRow = pitch / macroTilePitch;
-    uint64_t macroTileBytes = (microTileThickness * bpp * macroTileHeight * macroTilePitch + 7) / 8;
+    uint64_t macroTileBytes = (numSamples * microTileThickness * bpp * macroTileHeight * macroTilePitch + 7) / 8;
     uint64_t macroTileIndexX = x / macroTilePitch;
     uint64_t macroTileIndexY = y / macroTileHeight;
-    uint64_t macroTileOffset = macroTileBytes * (macroTileIndexX + macroTilesPerRow * macroTileIndexY);
+    uint64_t macroTileOffset = (macroTileIndexX + macroTilesPerRow * (macroTileIndexY)) * macroTileBytes;
 
     if (tileMode == 8 || tileMode == 9 || tileMode == 10 || tileMode == 11 || tileMode == 14 || tileMode == 15) {
         static const uint32_t bankSwapOrder[] = { 0, 1, 3, 2, 6, 7, 5, 4, 0, 0 };
@@ -743,15 +778,19 @@ uint64_t AddrLib_computeSurfaceAddrFromCoordMacroTiled(uint32_t x, uint32_t y, u
         bank ^= bankSwapOrder[swapIndex & (m_banks - 1)];
     }
 
-    uint64_t group_mask = (1 << numGroupBits) - 1;
-    uint64_t total_offset = elemOffset + (macroTileOffset >> (numBankBits + numPipeBits));
+    uint64_t groupMask = ((1 << numGroupBits) - 1);
 
-    uint64_t offset_high = (total_offset & ~(group_mask)) << (numBankBits + numPipeBits);
-    uint64_t offset_low = total_offset & group_mask;
-    uint64_t bank_bits = bank << (numPipeBits + numGroupBits);
-    uint64_t pipe_bits = pipe << numGroupBits;
+    uint64_t numSwizzleBits = (numBankBits + numPipeBits);
 
-    return bank_bits | pipe_bits | offset_low | offset_high;
+    uint64_t totalOffset = (elemOffset + ((macroTileOffset + sliceOffset) >> numSwizzleBits));
+
+    uint64_t offsetHigh  = (totalOffset & ~(groupMask)) << numSwizzleBits;
+    uint64_t offsetLow = groupMask & totalOffset;
+
+    uint64_t pipeBits = pipe << numGroupBits;
+    uint64_t bankBits = bank << (numPipeBits + numGroupBits);
+
+    return bankBits | pipeBits | offsetLow | offsetHigh;
 }
 
 void writeFile(FILE *f, GFDData *gfd, uint8_t *output) {
