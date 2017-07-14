@@ -409,7 +409,7 @@ int readGTX(GFDData *gfd, FILE *f) {
 				gfd->realSize = gfd->width * gfd->height * bpp;
 
 			gfd->dataSize = swap32(section.dataSize);
-			gfd->data = malloc(gfd->dataSize);
+			gfd->data = (uint8_t*)malloc(gfd->dataSize);
 			if (!gfd->data)
 				return -300;
 
@@ -853,7 +853,7 @@ void deswizzle(GFDData *gfd, FILE *f) {
 	double frac, whole;
 
 	data = (uint8_t *)gfd->data;
-	result = malloc(gfd->dataSize);
+	result = (uint8_t*)malloc(gfd->dataSize);
 
 	if (isvalueinarray(gfd->format, BCn_formats, 10)) {
 		double width2 = (double)gfd->width / 4.0;
@@ -908,7 +908,7 @@ void deswizzle(GFDData *gfd, FILE *f) {
 // remove_three(): removes the file extension from a string
 char *remove_three(const char *filename) {
 	size_t len = strlen(filename);
-	char *newfilename = malloc(len-2);
+	char *newfilename = (char*)malloc(len-2);
 	if (!newfilename) /* handle error */;
 	memcpy(newfilename, filename, len-3);
 	newfilename[len - 3] = 0;
@@ -1007,7 +1007,7 @@ int main(int argc, char **argv) {
 	char c2 = 's';
 
 	size_t len = strlen(str);
-	char *str2 = malloc(len + 3 + 1 );
+	char *str2 = (char*)malloc(len + 3 + 1 );
 	strcpy(str2, str);
 	str2[len] = c;
 	str2[len + 1] = c1;
