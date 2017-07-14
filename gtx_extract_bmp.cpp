@@ -6,6 +6,8 @@
  *   ( https://github.com/aboood40091 )
  * This software is released into the public domain.
  *
+ * Special thanks to: libtxc_dxtn developers
+ *
  * Tested with TDM-GCC-64 on Windows 10 Pro x64.
  *
  * How to build:
@@ -23,6 +25,7 @@
  */
 
 /* General stuff and imports */
+#include "txc_dxtn.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -36,8 +39,8 @@
 #define min(x, y) (((x) < (y)) ? (x) : (y))
 
 
-static int formats[] = {0x1a, 0x41a, 0x19, 0x8, 0xa, 0xb, 0x1, 0x7, 0x2, 0x31, 0x431, 0x32, 0x432, 0x33, 0x433, 0x34, 0x234, 0x35, 0x235}; // Supported formats
-static int BCn_formats[10] = {0x31, 0x431, 0x32, 0x432, 0x33, 0x433, 0x34, 0x234, 0x35, 0x235};
+static int formats[8] = {0x1a, 0x41a, 0x31, 0x431, 0x32, 0x432, 0x33, 0x433}; // Supported formats
+static int DXTn_formats[6] = {0x31, 0x431, 0x32, 0x432, 0x33, 0x433};
 
 // isvalueinarray(): find if a certain value is in a certain array
 bool isvalueinarray(int val, int *arr, int size){
@@ -77,6 +80,214 @@ uint32_t surfaceGetBitsPerPixel(uint32_t surfaceFormat)
 	uint32_t hwFormat = (surfaceFormat & 0x3F) * 4;
 	uint32_t bpp = formatHwInfo[hwFormat];
 	return bpp;
+}
+
+
+/* Start of libtxc_dxtn section */
+#define EXP5TO8R(packedcol)					\
+   ((((packedcol) >> 8) & 0xf8) | (((packedcol) >> 13) & 0x7))
+
+#define EXP6TO8G(packedcol)					\
+   ((((packedcol) >> 3) & 0xfc) | (((packedcol) >>  9) & 0x3))
+
+#define EXP5TO8B(packedcol)					\
+   ((((packedcol) << 3) & 0xf8) | (((packedcol) >>  2) & 0x7))
+
+#define EXP4TO8(col)						\
+   ((col) | ((col) << 4))
+
+
+/* inefficient. To be efficient, it would be necessary to decode 16 pixels at once */
+
+static void dxt135_decode_imageblock ( const GLubyte *img_block_src,
+                         GLint i, GLint j, GLuint dxt_type, GLvoid *texel ) {
+   GLchan *rgba = (GLchan *) texel;
+   const GLushort color0 = img_block_src[0] | (img_block_src[1] << 8);
+   const GLushort color1 = img_block_src[2] | (img_block_src[3] << 8);
+   const GLuint bits = img_block_src[4] | (img_block_src[5] << 8) |
+      (img_block_src[6] << 16) | (img_block_src[7] << 24);
+   /* What about big/little endian? */
+   GLubyte bit_pos = 2 * (j * 4 + i) ;
+   GLubyte code = (GLubyte) ((bits >> bit_pos) & 3);
+
+   rgba[ACOMP] = CHAN_MAX;
+   switch (code) {
+   case 0:
+      rgba[RCOMP] = UBYTE_TO_CHAN( EXP5TO8R(color0) );
+      rgba[GCOMP] = UBYTE_TO_CHAN( EXP6TO8G(color0) );
+      rgba[BCOMP] = UBYTE_TO_CHAN( EXP5TO8B(color0) );
+      break;
+   case 1:
+      rgba[RCOMP] = UBYTE_TO_CHAN( EXP5TO8R(color1) );
+      rgba[GCOMP] = UBYTE_TO_CHAN( EXP6TO8G(color1) );
+      rgba[BCOMP] = UBYTE_TO_CHAN( EXP5TO8B(color1) );
+      break;
+   case 2:
+      if (color0 > color1) {
+         rgba[RCOMP] = UBYTE_TO_CHAN( ((EXP5TO8R(color0) * 2 + EXP5TO8R(color1)) / 3) );
+         rgba[GCOMP] = UBYTE_TO_CHAN( ((EXP6TO8G(color0) * 2 + EXP6TO8G(color1)) / 3) );
+         rgba[BCOMP] = UBYTE_TO_CHAN( ((EXP5TO8B(color0) * 2 + EXP5TO8B(color1)) / 3) );
+      }
+      else {
+         rgba[RCOMP] = UBYTE_TO_CHAN( ((EXP5TO8R(color0) + EXP5TO8R(color1)) / 2) );
+         rgba[GCOMP] = UBYTE_TO_CHAN( ((EXP6TO8G(color0) + EXP6TO8G(color1)) / 2) );
+         rgba[BCOMP] = UBYTE_TO_CHAN( ((EXP5TO8B(color0) + EXP5TO8B(color1)) / 2) );
+      }
+      break;
+   case 3:
+      if ((dxt_type > 1) || (color0 > color1)) {
+         rgba[RCOMP] = UBYTE_TO_CHAN( ((EXP5TO8R(color0) + EXP5TO8R(color1) * 2) / 3) );
+         rgba[GCOMP] = UBYTE_TO_CHAN( ((EXP6TO8G(color0) + EXP6TO8G(color1) * 2) / 3) );
+         rgba[BCOMP] = UBYTE_TO_CHAN( ((EXP5TO8B(color0) + EXP5TO8B(color1) * 2) / 3) );
+      }
+      else {
+         rgba[RCOMP] = 0;
+         rgba[GCOMP] = 0;
+         rgba[BCOMP] = 0;
+         if (dxt_type == 1) rgba[ACOMP] = UBYTE_TO_CHAN(0);
+      }
+      break;
+   default:
+   /* CANNOT happen (I hope) */
+      break;
+   }
+}
+
+
+void fetch_2d_texel_rgba_dxt1(GLint srcRowStride, const GLubyte *pixdata,
+                         GLint i, GLint j, GLvoid *texel)
+{
+   /* Extract the (i,j) pixel from pixdata and return it
+    * in texel[RCOMP], texel[GCOMP], texel[BCOMP], texel[ACOMP].
+    */
+
+   const GLubyte *blksrc = (pixdata + ((srcRowStride + 3) / 4 * (j / 4) + (i / 4)) * 8);
+   dxt135_decode_imageblock(blksrc, (i&3), (j&3), 1, texel);
+}
+
+
+void fetch_2d_texel_rgba_dxt3(GLint srcRowStride, const GLubyte *pixdata,
+                         GLint i, GLint j, GLvoid *texel) {
+
+   /* Extract the (i,j) pixel from pixdata and return it
+    * in texel[RCOMP], texel[GCOMP], texel[BCOMP], texel[ACOMP].
+    */
+
+   GLchan *rgba = (GLchan *) texel;
+   const GLubyte *blksrc = (pixdata + ((srcRowStride + 3) / 4 * (j / 4) + (i / 4)) * 16);
+#if 0
+   /* Simple 32bit version. */
+/* that's pretty brain-dead for a single pixel, isn't it? */
+   const GLubyte bit_pos = 4 * ((j&3) * 4 + (i&3));
+   const GLuint alpha_low = blksrc[0] | (blksrc[1] << 8) | (blksrc[2] << 16) | (blksrc[3] << 24);
+   const GLuint alpha_high = blksrc[4] | (blksrc[5] << 8) | (blksrc[6] << 16) | (blksrc[7] << 24);
+   dxt135_decode_imageblock(blksrc + 8, (i&3), (j&3), 2, texel);
+   if (bit_pos < 32)
+      rgba[ACOMP] = UBYTE_TO_CHAN( (GLubyte)(EXP4TO8((alpha_low >> bit_pos) & 15)) );
+   else
+      rgba[ACOMP] = UBYTE_TO_CHAN( (GLubyte)(EXP4TO8((alpha_high >> (bit_pos - 32)) & 15)) );
+#endif
+#if 1
+/* TODO test this! */
+   const GLubyte anibble = (blksrc[((j&3) * 4 + (i&3)) / 2] >> (4 * (i&1))) & 0xf;
+   dxt135_decode_imageblock(blksrc + 8, (i&3), (j&3), 2, texel);
+   rgba[ACOMP] = UBYTE_TO_CHAN( (GLubyte)(EXP4TO8(anibble)) );
+#endif
+
+}
+
+
+void fetch_2d_texel_rgba_dxt5(GLint srcRowStride, const GLubyte *pixdata,
+                         GLint i, GLint j, GLvoid *texel) {
+
+   /* Extract the (i,j) pixel from pixdata and return it
+    * in texel[RCOMP], texel[GCOMP], texel[BCOMP], texel[ACOMP].
+    */
+
+   GLchan *rgba = (GLchan *) texel;
+   const GLubyte *blksrc = (pixdata + ((srcRowStride + 3) / 4 * (j / 4) + (i / 4)) * 16);
+   const GLubyte alpha0 = blksrc[0];
+   const GLubyte alpha1 = blksrc[1];
+#if 0
+   const GLubyte bit_pos = 3 * ((j&3) * 4 + (i&3));
+   /* simple 32bit version */
+   const GLuint bits_low = blksrc[2] | (blksrc[3] << 8) | (blksrc[4] << 16) | (blksrc[5] << 24);
+   const GLuint bits_high = blksrc[6] | (blksrc[7] << 8);
+   GLubyte code;
+   if (bit_pos < 30)
+      code = (GLubyte) ((bits_low >> bit_pos) & 7);
+   else if (bit_pos == 30)
+      code = (GLubyte) ((bits_low >> 30) & 3) | ((bits_high << 2) & 4);
+   else
+      code = (GLubyte) ((bits_high >> (bit_pos - 32)) & 7);
+#endif
+#if 1
+/* TODO test this! */
+   const GLubyte bit_pos = ((j&3) * 4 + (i&3)) * 3;
+   const GLubyte acodelow = blksrc[2 + bit_pos / 8];
+   const GLubyte acodehigh = blksrc[3 + bit_pos / 8];
+   const GLubyte code = (acodelow >> (bit_pos & 0x7) |
+      (acodehigh  << (8 - (bit_pos & 0x7)))) & 0x7;
+#endif
+   dxt135_decode_imageblock(blksrc + 8, (i&3), (j&3), 2, texel);
+#if 0
+   if (alpha0 > alpha1) {
+      switch (code) {
+      case 0:
+         rgba[ACOMP] = UBYTE_TO_CHAN( alpha0 );
+         break;
+      case 1:
+         rgba[ACOMP] = UBYTE_TO_CHAN( alpha1 );
+         break;
+      case 2:
+      case 3:
+      case 4:
+      case 5:
+      case 6:
+      case 7:
+         rgba[ACOMP] = UBYTE_TO_CHAN( ((alpha0 * (8 - code) + (alpha1 * (code - 1))) / 7) );
+         break;
+      }
+   }
+   else {
+      switch (code) {
+      case 0:
+         rgba[ACOMP] = UBYTE_TO_CHAN( alpha0 );
+         break;
+      case 1:
+         rgba[ACOMP] = UBYTE_TO_CHAN( alpha1 );
+         break;
+      case 2:
+      case 3:
+      case 4:
+      case 5:
+         rgba[ACOMP] = UBYTE_TO_CHAN( ((alpha0 * (6 - code) + (alpha1 * (code - 1))) / 5) );
+         break;
+      case 6:
+         rgba[ACOMP] = 0;
+         break;
+      case 7:
+         rgba[ACOMP] = CHAN_MAX;
+         break;
+      }
+   }
+#endif
+/* not sure. Which version is faster? */
+#if 1
+/* TODO test this */
+   if (code == 0)
+      rgba[ACOMP] = UBYTE_TO_CHAN( alpha0 );
+   else if (code == 1)
+      rgba[ACOMP] = UBYTE_TO_CHAN( alpha1 );
+   else if (alpha0 > alpha1)
+      rgba[ACOMP] = UBYTE_TO_CHAN( ((alpha0 * (8 - code) + (alpha1 * (code - 1))) / 7) );
+   else if (code < 6)
+      rgba[ACOMP] = UBYTE_TO_CHAN( ((alpha0 * (6 - code) + (alpha1 * (code - 1))) / 5) );
+   else if (code == 6)
+      rgba[ACOMP] = 0;
+   else
+      rgba[ACOMP] = CHAN_MAX;
+#endif
 }
 
 
@@ -141,212 +352,51 @@ uint32_t swap32(uint32_t v) {
 	return a|b|c|d;
 }
 
+// swapRB(): swaps the R and B channels
+uint32_t swapRB(uint32_t argb) {
+	uint32_t r = (argb & 0x00FF0000) >> 16;
+	uint32_t b = (argb & 0x000000FF) << 16;
+	uint32_t ag = (argb & 0xFF00FF00);
+	return ag|r|b;
+}
 
-
-/* Start of DDS writer section */
-
-/*
- * Copyright © 2016-2017 AboodXD
- *
- * Supported formats:
-    -RGBA8
-    -RGB10A2
-    -RGB565
-    -RGB5A1
-    -RGBA4
-    -L8
-    -L8A8
-    -L4A4
-    -BC1_UNORM
-    -BC2_UNORM
-    -BC3_UNORM
-    -BC4_UNORM
-    -BC4_SNORM
-    -BC5_UNORM
-    -BC5_SNORM
- *
- * Feel free to include this in your own program if you want, just give credits. :)
- */
-
- // writeHeader(): writes a DDS header according to the given values
-void writeHeader(FILE *f, uint32_t num_mipmaps, uint32_t w, uint32_t h, uint32_t format_, bool compressed) {
-	uint32_t fmtbpp = 0;
-	uint32_t has_alpha;
-	uint32_t rmask = 0;
-	uint32_t gmask = 0;
-	uint32_t bmask = 0;
-	uint32_t amask = 0;
-	uint32_t flags;
-	uint32_t pflags;
-	uint32_t caps;
-	uint32_t size;
+// writeBMPHeader(): writes a BMP header according to the given values
+void writeBMPHeader(FILE *f, int width, int height) {
+	uint16_t u16;
 	uint32_t u32;
 
-	if (format_ == 28) { // RGBA8
-		fmtbpp = 4;
-		has_alpha = 1;
-		rmask = 0x000000ff;
-		gmask = 0x0000ff00;
-		bmask = 0x00ff0000;
-		amask = 0xff000000;
-	}
+	fwrite("BM", 1, 2, f);
+	u32 = 122 + (width*height*4); fwrite(&u32, 1, 4, f);
+	u16 = 0; fwrite(&u16, 1, 2, f);
+	u16 = 0; fwrite(&u16, 1, 2, f);
+	u32 = 122; fwrite(&u32, 1, 4, f);
 
-	else if (format_ == 24) { // RGB10A2
-		fmtbpp = 4;
-		has_alpha = 1;
-		rmask = 0x000003ff;
-		gmask = 0x000ffc00;
-		bmask = 0x3ff00000;
-		amask = 0xc0000000;
-	}
-
-	else if (format_ == 85) { // RGB565
-		fmtbpp = 2;
-		has_alpha = 0;
-		rmask = 0x0000001f;
-		gmask = 0x000007e0;
-		bmask = 0x0000f800;
-		amask = 0x00000000;
-	}
-
-	else if (format_ == 86) { // RGB5A1
-		fmtbpp = 2;
-		has_alpha = 1;
-		rmask = 0x0000001f;
-		gmask = 0x000003e0;
-		bmask = 0x00007c00;
-		amask = 0x00008000;
-	}
-
-	else if (format_ == 115) { // RGBA4
-		fmtbpp = 2;
-		has_alpha = 1;
-		rmask = 0x0000000f;
-		gmask = 0x000000f0;
-		bmask = 0x00000f00;
-		amask = 0x0000f000;
-	}
-
-	else if (format_ == 61) { // L8
-		fmtbpp = 1;
-		has_alpha = 0;
-		rmask = 0x000000ff;
-		gmask = 0x000000ff;
-		bmask = 0x000000ff;
-		amask = 0x00000000;
-	}
-
-	else if (format_ == 49) { // L8A8
-		fmtbpp = 2;
-		has_alpha = 1;
-		rmask = 0x000000ff;
-		gmask = 0x000000ff;
-		bmask = 0x000000ff;
-		amask = 0x0000ff00;
-	}
-
-	else if (format_ == 112) { // L4A4
-		fmtbpp = 1;
-		has_alpha = 1;
-		rmask = 0x0000000f;
-		gmask = 0x0000000f;
-		bmask = 0x0000000f;
-		amask = 0x000000f0;
-	}
-
-	fmtbpp <<= 3;
-
-	flags = (0x00000001) | (0x00001000) | (0x00000004) | (0x00000002);
-
-	caps = (0x00001000);
-
-	if (num_mipmaps == 0)
-		num_mipmaps = 1;
-	if (num_mipmaps != 1) {
-		flags |= (0x00020000);
-		caps |= ((0x00000008) | (0x00400000));
-	}
-
-	if (!(compressed)) {
-		flags |= (0x00000008);
-
-		if (fmtbpp == 1 || format_ == 49) // LUMINANCE
-			pflags = (0x00020000);
-
-		else // RGB
-			pflags = (0x00000040);
-
-		if (has_alpha != 0)
-			pflags |= (0x00000001);
-
-		size = (w * fmtbpp);
-	}
-
-	else {
-		flags |= (0x00080000);
-		pflags = (0x00000004);
-
-		size = ((w + 3) >> 2) * ((h + 3) >> 2);
-		if (format_ == 71 || format_ == 80 || format_ == 81)
-			size *= 8;
-		else
-			size *= 16;
-	}
-
-	fwrite("DDS ", 1, 4, f);
-	u32 = 124; fwrite(&u32, 1, 4, f);
-	fwrite(&flags, 1, 4, f);
-	fwrite(&h, 1, 4, f);
-	fwrite(&w, 1, 4, f);
-	fwrite(&size, 1, 4, f);
+	u32 = 108; fwrite(&u32, 1, 4, f);
+	u32 = width; fwrite(&u32, 1, 4, f);
+	u32 = height; fwrite(&u32, 1, 4, f);
+	u16 = 1; fwrite(&u16, 1, 2, f);
+	u16 = 32; fwrite(&u16, 1, 2, f);
+	u32 = 3; fwrite(&u32, 1, 4, f);
+	u32 = width*height*4; fwrite(&u32, 1, 4, f);
+	u32 = 2835; fwrite(&u32, 1, 4, f);
+	u32 = 2835; fwrite(&u32, 1, 4, f);
 	u32 = 0; fwrite(&u32, 1, 4, f);
-	fwrite(&num_mipmaps, 1, 4, f);
+	u32 = 0; fwrite(&u32, 1, 4, f);
+	u32 = 0xFF0000; fwrite(&u32, 1, 4, f);
+	u32 = 0xFF00; fwrite(&u32, 1, 4, f);
+	u32 = 0xFF; fwrite(&u32, 1, 4, f);
+	u32 = 0xFF000000; fwrite(&u32, 1, 4, f);
+	u32 = 0x57696E20; fwrite(&u32, 1, 4, f);
 
-	uint8_t thing[0x2C];
-	memset(thing, 0, 0x2C);
-	fwrite(thing, 1, 0x2C, f);
+	uint8_t thing[0x24];
+	memset(thing, 0, 0x24);
+	fwrite(thing, 1, 0x24, f);
 
-	u32 = 32; fwrite(&u32, 1, 4, f);
-	fwrite(&pflags, 1, 4, f);
-
-	if (!(compressed)) {
-		u32 = 0; fwrite(&u32, 1, 4, f);
-	}
-
-	else {
-		if (format_ == 71)
-			fwrite("DXT1", 1, 4, f);
-
-		else if (format_ == 74)
-			fwrite("DXT3", 1, 4, f);
-
-		else if (format_ == 77)
-			fwrite("DXT5", 1, 4, f);
-
-		else if (format_ == 80)
-			fwrite("BC4U", 1, 4, f);
-
-		else if (format_ == 81)
-			fwrite("BC4S", 1, 4, f);
-
-		else if (format_ == 83)
-			fwrite("BC5U", 1, 4, f);
-
-		else if (format_ == 84)
-			fwrite("BC5S", 1, 4, f);
-	}
-
-	fwrite(&fmtbpp, 1, 4, f);
-	fwrite(&rmask, 1, 4, f);
-	fwrite(&gmask, 1, 4, f);
-	fwrite(&bmask, 1, 4, f);
-	fwrite(&amask, 1, 4, f);
-	fwrite(&caps, 1, 4, f);
-
-	uint8_t thing2[0x10];
-	memset(thing2, 0, 0x10);
-	fwrite(thing2, 1, 0x10, f);
+	u32 = 0; fwrite(&u32, 1, 4, f);
+	u32 = 0; fwrite(&u32, 1, 4, f);
+	u32 = 0; fwrite(&u32, 1, 4, f);
 }
+
 
 // readGTX(): reads the GTX file
 int readGTX(GFDData *gfd, FILE *f) {
@@ -402,7 +452,7 @@ int readGTX(GFDData *gfd, FILE *f) {
 			uint32_t bpp = gfd->bpp;
 			bpp /= 8;
 
-			if (isvalueinarray(gfd->format, BCn_formats, 10))
+			if (isvalueinarray(gfd->format, DXTn_formats, 6))
 				gfd->realSize = ((gfd->width + 3) >> 2) * ((gfd->height + 3) >> 2) * bpp;
 
 			else
@@ -777,72 +827,15 @@ uint64_t AddrLib_computeSurfaceAddrFromCoordMacroTiled(uint32_t x, uint32_t y, u
 	return bankBits | pipeBits | offsetLow | offsetHigh;
 }
 
-// writeFile(): writes the DDS file
-void writeFile(FILE *f, GFDData *gfd, uint8_t *output) {
-	int y;
-	uint32_t format;
+// writeFile(): writes the BMP file
+void writeFile(FILE *f, int width, int height, uint8_t *output) {
+    int row;
 
-	if (gfd->format == 0x1a || gfd->format == 0x41a)
-		format = 28;
+	writeBMPHeader(f, width, height);
 
-	else if (gfd->format == 0x19)
-		format = 24;
-
-	else if (gfd->format == 0x8)
-		format = 85;
-
-	else if (gfd->format == 0xa)
-		format = 86;
-
-	else if (gfd->format == 0xb)
-		format = 115;
-
-	else if (gfd->format == 0x1)
-		format = 61;
-
-	else if (gfd->format == 0x7)
-		format = 49;
-
-	else if (gfd->format == 0x2)
-		format = 112;
-
-	else if (gfd->format == 0x31 || gfd->format == 0x431)
-		format = 71;
-
-	else if (gfd->format == 0x32 || gfd->format == 0x432)
-		format = 74;
-
-	else if (gfd->format == 0x33 || gfd->format == 0x433)
-		format = 77;
-
-	else if (gfd->format == 0x34)
-		format = 80;
-
-	else if (gfd->format == 0x234)
-		format = 81;
-
-	else if (gfd->format == 0x35)
-		format = 83;
-
-	else if (gfd->format == 0x235)
-		format = 84;
-
-	writeHeader(f, 1, gfd->width, gfd->height, format, isvalueinarray(gfd->format, BCn_formats, 10));
-
-	uint32_t bpp = gfd->bpp;
-	bpp /= 8;
-
-	if (isvalueinarray(gfd->format, BCn_formats, 10)) {
-		bpp /= 2;
-		bpp = max(1, bpp);
-	}
-
-	for (y = 0; y < gfd->height; y++) {
-		if ((y * gfd->width * bpp) >= gfd->realSize)
-			break;
-
-		fwrite(&output[y * gfd->width * bpp], 1, gfd->width * bpp, f);
-	}
+    for (row = height - 1; row >= 0; row--) {
+        fwrite(&output[row * width * 4], 1, width * 4, f);
+    }
 }
 
 // deswizzle(): deswizzles the image
@@ -850,12 +843,13 @@ void deswizzle(GFDData *gfd, FILE *f) {
 	uint64_t pos, pos_;
 	uint32_t x, y, width, height;
 	uint8_t *data, *result;
+	uint32_t *output, outValue;
 	double frac, whole;
 
 	data = (uint8_t *)gfd->data;
 	result = (uint8_t*)malloc(gfd->dataSize);
 
-	if (isvalueinarray(gfd->format, BCn_formats, 10)) {
+	if (isvalueinarray(gfd->format, DXTn_formats, 6)) {
 		double width2 = (double)gfd->width / 4.0;
 		frac = modf(width2, &whole);
 		width = (uint32_t)whole;
@@ -900,9 +894,43 @@ void deswizzle(GFDData *gfd, FILE *f) {
 		}
 	}
 
-	writeFile(f, gfd, result);
+	output = (uint32_t*)malloc(gfd->width * gfd->height * 4);
+
+    for (y = 0; y < gfd->height; y++) {
+		for (x = 0; x < gfd->width; x++) {
+            if (isvalueinarray(gfd->format, DXTn_formats, 6)) {
+                uint8_t bits[4];
+
+                if (gfd->format == 0x31 || gfd->format == 0x431)
+                    fetch_2d_texel_rgba_dxt1(gfd->width, result, x, y, bits);
+                else if (gfd->format == 0x32 || gfd->format == 0x432)
+                    fetch_2d_texel_rgba_dxt3(gfd->width, result, x, y, bits);
+                else if (gfd->format == 0x33 || gfd->format == 0x433)
+                    fetch_2d_texel_rgba_dxt5(gfd->width, result, x, y, bits);
+
+                outValue = (bits[ACOMP] << 24);
+                outValue |= (bits[RCOMP] << 16);
+                outValue |= (bits[GCOMP] << 8);
+                outValue |= bits[BCOMP];
+            }
+
+            else {
+                pos_ = (y * width + x) * 4;
+
+                outValue = (result[pos_ + 3] << 24);
+                outValue |= (result[pos_] << 16);
+                outValue |= (result[pos_ + 1] << 8);
+                outValue |= result[pos_ + 2];
+            }
+
+            output[(y * gfd->width) + x] = outValue;
+		}
+	}
+
+	writeFile(f, gfd->width, gfd->height, (uint8_t *)output);
 
 	free(result);
+	free(output);
 }
 
 // remove_three(): removes the file extension from a string
@@ -921,7 +949,8 @@ int main(int argc, char **argv) {
 	FILE *f;
 	int result;
 
-	printf("GTX Extractor - C ver.\n");
+	printf("GTX Extractor - C++ ver.\n");
+	printf("BMP ver.\n");
 	printf("(C) 2014 Treeki, 2017 AboodXD\n");
 
 	if (argc != 2) {
@@ -931,23 +960,12 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "Supported formats:\n");
 		fprintf(stderr, " - GX2_SURFACE_FORMAT_TCS_R8_G8_B8_A8_UNORM\n");
 		fprintf(stderr, " - GX2_SURFACE_FORMAT_TCS_R8_G8_B8_A8_SRGB\n");
-		fprintf(stderr, " - GX2_SURFACE_FORMAT_TCS_R10_G10_B10_A2_UNORM\n");
-		fprintf(stderr, " - GX2_SURFACE_FORMAT_TCS_R5_G6_B5_UNORM\n");
-		fprintf(stderr, " - GX2_SURFACE_FORMAT_TC_R5_G5_B5_A1_UNORM\n");
-		fprintf(stderr, " - GX2_SURFACE_FORMAT_TC_R4_G4_B4_A4_UNORM\n");
-		fprintf(stderr, " - GX2_SURFACE_FORMAT_TC_R8_UNORM\n");
-		fprintf(stderr, " - GX2_SURFACE_FORMAT_TC_R8_G8_UNORM\n");
-		fprintf(stderr, " - GX2_SURFACE_FORMAT_TC_R4_G4_UNORM\n");
 		fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC1_UNORM\n");
 		fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC1_SRGB\n");
 		fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC2_UNORM\n");
 		fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC2_SRGB\n");
 		fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC3_UNORM\n");
 		fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC3_SRGB\n");
-		fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC4_UNORM\n");
-		fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC4_SNORM\n");
-		fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC5_UNORM\n");
-		fprintf(stderr, " - GX2_SURFACE_FORMAT_T_BC5_SNORM\n");
 		fprintf(stderr, "\n");
 		fprintf(stderr, "Exiting in 5 seconds...\n");
 		unsigned int retTime = time(0) + 5;
@@ -1002,9 +1020,9 @@ int main(int argc, char **argv) {
 	}
 
 	char *str = remove_three(argv[1]);
-	char c = 'd';
-	char c1 = 'd';
-	char c2 = 's';
+	char c = 'b';
+	char c1 = 'm';
+	char c2 = 'p';
 
 	size_t len = strlen(str);
 	char *str2 = (char*)malloc(len + 3 + 1 );
@@ -1049,7 +1067,7 @@ int main(int argc, char **argv) {
 
 	uint32_t bpp = data.bpp;
 
-	if (isvalueinarray(data.format, formats, 19)) {
+	if (isvalueinarray(data.format, formats, 8)) {
 		deswizzle(&data, f);
 	}
 

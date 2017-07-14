@@ -9,30 +9,31 @@ And it's not Wii-specific any more. :p
 GTX Extractor (C version)
 -------------------
 
-Extracts textures from the GX2 Texture ('Gfx2' / .gtx file extension) format used in Wii U games, and saves them as DDS. 
+Extracts textures from the GX2 Texture ('Gfx2' / .gtx file extension) format used in Wii U games, and saves them as DDS/BMP. 
   
 Supported formats:  
 * RGBA8_UNORM / RGBA8_SRGB
-* RGB10A2_UNORM
-* RGB565_UNORM
-* RGB5A1_UNORM
-* RGBA4_UNORM
-* R8_UNORM
-* RG8_UNORM
-* RG4_UNORM
+* RGB10A2_UNORM (Not supported in BMP ver)
+* RGB565_UNORM (Not supported in BMP ver)
+* RGB5A1_UNORM (Not supported in BMP ver)
+* RGBA4_UNORM (Not supported in BMP ver)
+* R8_UNORM (Not supported in BMP ver)
+* RG8_UNORM (Not supported in BMP ver)
+* RG4_UNORM (Not supported in BMP ver)
 * BC1_UNORM / BC1_SRGB (DXT1)
 * BC2_UNORM / BC2_SRGB (DXT3)
 * BC3_UNORM / BC3_SRGB (DXT5)
-* BC4_UNORM / BC4_SNORM (ATI1)
-* BC5_UNORM / BC5_SNORM (ATI2)
+* BC4_UNORM / BC4_SNORM (ATI1 / Not supported in BMP ver)
+* BC5_UNORM / BC5_SNORM (ATI2 / Not supported in BMP ver)
   
 TODO:  
 * Make a x86 version (Would probably force me to rewrite the program?)
   
 Credits:  
 * Treeki - Original developer.
-* AboodXD - Reviver, Added new features, Improved swizzling.
+* AboodXD - Reviver, Added more formats and new features, Improved swizzling.
 * Exzap, AddrLib - Helping with swizzling.
+* libtxc_dxtn - DXTn compressor.  
   
 More details on compilation and usage in the comments inside the file.  
 
