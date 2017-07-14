@@ -920,7 +920,7 @@ int main(int argc, char **argv) {
 	FILE *f;
 	int result;
 
-	printf("GTX Extractor - C ver.\n");
+	printf("GTX Extractor - C++ ver.\n");
 	printf("(C) 2014 Treeki, 2017 AboodXD\n");
 
 	if (argc != 2) {
