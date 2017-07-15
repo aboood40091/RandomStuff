@@ -896,34 +896,36 @@ void deswizzle(GFDData *gfd, FILE *f) {
 
 	output = (uint32_t*)malloc(gfd->width * gfd->height * 4);
 
-    for (y = 0; y < gfd->height; y++) {
+	for (y = 0; y < gfd->height; y++) {
 		for (x = 0; x < gfd->width; x++) {
-            if (isvalueinarray(gfd->format, DXTn_formats, 6)) {
-                uint8_t bits[4];
+			if (isvalueinarray(gfd->format, DXTn_formats, 6)) {
+				uint8_t bits[4];
 
-                if (gfd->format == 0x31 || gfd->format == 0x431)
-                    fetch_2d_texel_rgba_dxt1(gfd->width, result, x, y, bits);
-                else if (gfd->format == 0x32 || gfd->format == 0x432)
-                    fetch_2d_texel_rgba_dxt3(gfd->width, result, x, y, bits);
-                else if (gfd->format == 0x33 || gfd->format == 0x433)
-                    fetch_2d_texel_rgba_dxt5(gfd->width, result, x, y, bits);
+				if (gfd->format == 0x31 || gfd->format == 0x431)
+					fetch_2d_texel_rgba_dxt1(gfd->width, result, x, y, bits);
 
-                outValue = (bits[ACOMP] << 24);
-                outValue |= (bits[RCOMP] << 16);
-                outValue |= (bits[GCOMP] << 8);
-                outValue |= bits[BCOMP];
-            }
+				else if (gfd->format == 0x32 || gfd->format == 0x432)
+					fetch_2d_texel_rgba_dxt3(gfd->width, result, x, y, bits);
 
-            else {
-                pos_ = (y * width + x) * 4;
+				else if (gfd->format == 0x33 || gfd->format == 0x433)
+					fetch_2d_texel_rgba_dxt5(gfd->width, result, x, y, bits);
 
-                outValue = (result[pos_ + 3] << 24);
-                outValue |= (result[pos_] << 16);
-                outValue |= (result[pos_ + 1] << 8);
-                outValue |= result[pos_ + 2];
-            }
+				outValue = (bits[ACOMP] << 24);
+				outValue |= (bits[RCOMP] << 16);
+				outValue |= (bits[GCOMP] << 8);
+				outValue |= bits[BCOMP];
+			}
 
-            output[(y * gfd->width) + x] = outValue;
+			else {
+				pos_ = (y * width + x) * 4;
+
+				outValue = (result[pos_ + 3] << 24);
+				outValue |= (result[pos_] << 16);
+				outValue |= (result[pos_ + 1] << 8);
+				outValue |= result[pos_ + 2];
+			}
+
+			output[(y * gfd->width) + x] = outValue;
 		}
 	}
 
