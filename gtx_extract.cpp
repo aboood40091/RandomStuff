@@ -9,7 +9,7 @@
  * Tested with TDM-GCC-64 on Windows 10 Pro x64.
  *
  * How to build:
- * gcc -o gtx_extract gtx_extract.c
+ * g++ -o gtx_extract gtx_extract.c
  *
  * Why so complex?
  * Wii U textures appear to be packed using a complex 'texture swizzling'
